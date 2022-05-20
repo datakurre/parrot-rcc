@@ -1,0 +1,14 @@
+{
+    "rcc": {
+        "branch": "master",
+        "description": "RCC is a set of tooling that allows you to create, manage, and distribute Python-based self-contained automation packages - or 'robots' as we call them.",
+        "homepage": "https://robocorp.com/docs/product-manuals/robocorp-cli",
+        "owner": "robocorp",
+        "repo": "rcc",
+        "rev": "93e6b3fa131a49ea50e60d3cea94a02ae18f672a",
+        "sha256": "195fh4rbdyv8dqpm56vdm57cnz8prdg81fyyfpb87dchq8x7jzwn",
+        "type": "tarball",
+        "url": "https://github.com/robocorp/rcc/archive/93e6b3fa131a49ea50e60d3cea94a02ae18f672a.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    }
+}
