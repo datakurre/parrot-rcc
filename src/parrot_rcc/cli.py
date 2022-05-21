@@ -109,7 +109,7 @@ def main(robots, rcc_executable):
             after=[],
         )
         worker._add_task(
-            task_builder.build_task(create_task(task, robot, options), config)
+            task_builder.build_task(create_task(task, str(robot), options), config)
         )
 
     loop = asyncio.get_event_loop()
