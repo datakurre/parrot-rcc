@@ -9,11 +9,12 @@ env: poetry.lock
 
 .PHONY: format
 format:
-	black src
+	PYTHONPATH= black src
+	isort src
 
 .PHONY: shell
 shell:
-	nix-shell default.nix
+	nix-shell shell.nix
 
 ###
 

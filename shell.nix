@@ -13,7 +13,8 @@
     parrot-rcc = ./src;
   };
 }).env.overrideAttrs(old: {
-  buildInput = with pkgs; [
+  buildInputs = with pkgs; [
+    python3Packages.isort
     black
     gnumake
     niv
