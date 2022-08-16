@@ -7,7 +7,7 @@ networks:
 services:
   zeebe:
     container_name: zeebe_broker
-    image: camunda/zeebe:8.0.2
+    image: camunda/zeebe:8.0.5
     environment:
       - ZEEBE_LOG_LEVEL=debug
     ports:
@@ -22,7 +22,7 @@ services:
 
   simple-monitor-postgres:
     container_name: zeebe-simple-monitor-postgres
-    image: ghcr.io/camunda-community-hub/zeebe-simple-monitor:2.3.0
+    image: ghcr.io/camunda-community-hub/zeebe-simple-monitor:2.4.0
     environment:
       - zeebe.client.broker.gateway-address=zeebe:26500
       - zeebe.client.worker.hazelcast.connection=zeebe:5701
