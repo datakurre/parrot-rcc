@@ -126,6 +126,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                         output_json = json.loads(fp.read())
                         for item in output_json:
                             return item.get("payload") or {}
+                return {}
 
     return execute_task, task_config
 
@@ -138,8 +139,19 @@ async def on_error(exception: Exception, job: Job):
     await job.set_error_status(f"Failed to handle job {job}. Error: {str(exception)}")
 
 
+class VariablesDict(dict):
+    def update(self, d):
+        # pyzeebe simply updates original job variables on worker completion
+        # and returns all task variables back on job completion
+        #
+        # this patches it to only return variables returned by the worker
+        self.clear()
+        super().update(d)
+
+
 def before_job(job: Job) -> Job:
     logger.debug(f"Before job: {job}")
+    job.variables = VariablesDict(job.variables)
     return job
 
 

@@ -3,6 +3,7 @@
 }:
 
 (pkgs.poetry2nix.mkPoetryEnv {
+  preferWheels = true;
   projectDir = ./.;
   overrides = pkgs.poetry2nix.overrides.withDefaults(self: super: {
      pyzeebe = super.pyzeebe.overridePythonAttrs(old: {
@@ -23,5 +24,6 @@
     rccFHSUserEnv
     twine
     zbctl
+    entr
   ];
 })
