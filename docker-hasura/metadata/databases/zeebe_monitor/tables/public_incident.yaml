@@ -1,0 +1,3 @@
+table:
+  name: incident
+  schema: public

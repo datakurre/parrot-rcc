@@ -1,0 +1,30 @@
+- name: zeebe_monitor
+  kind: postgres
+  configuration:
+    connection_info:
+      database_url: postgresql://zeebe_monitor:zeebe_monitor@postgres:5432/zeebe_monitor
+      isolation_level: read-committed
+      use_prepared_statements: false
+  customization:
+    naming_convention: hasura-default
+  tables: "!include zeebe_monitor/tables/tables.yaml"
+- name: zeebe_play
+  kind: postgres
+  configuration:
+    connection_info:
+      database_url: postgresql://zeebe_play:zeebe_play@postgres:5432/zeebe_play
+      isolation_level: read-committed
+      use_prepared_statements: false
+  customization:
+    naming_convention: hasura-default
+  tables: "!include zeebe_play/tables/tables.yaml"
+- name: zeebe_tasklist
+  kind: postgres
+  configuration:
+    connection_info:
+      database_url: postgresql://zeebe_tasklist:zeebe_tasklist@postgres:5432/zeebe_tasklist
+      isolation_level: read-committed
+      use_prepared_statements: false
+  customization:
+    naming_convention: hasura-default
+  tables: "!include zeebe_tasklist/tables/tables.yaml"

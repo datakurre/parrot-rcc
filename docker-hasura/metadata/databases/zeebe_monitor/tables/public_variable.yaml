@@ -1,0 +1,13 @@
+table:
+  name: variable
+  schema: public
+object_relationships:
+  - name: value
+    using:
+      manual_configuration:
+        column_mapping:
+          id: id
+        insertion_order: null
+        remote_table:
+          name: variable_value
+          schema: public

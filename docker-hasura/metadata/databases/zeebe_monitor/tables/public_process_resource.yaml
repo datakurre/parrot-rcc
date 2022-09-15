@@ -1,0 +1,3 @@
+table:
+  name: process_resource
+  schema: public

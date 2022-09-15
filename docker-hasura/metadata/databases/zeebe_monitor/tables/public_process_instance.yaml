@@ -1,0 +1,13 @@
+table:
+  name: process_instance
+  schema: public
+array_relationships:
+  - name: variables
+    using:
+      manual_configuration:
+        column_mapping:
+          key_: process_instance_key_
+        insertion_order: null
+        remote_table:
+          name: variable
+          schema: public

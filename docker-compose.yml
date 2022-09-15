@@ -5,49 +5,120 @@ networks:
     driver: bridge
 
 services:
-  zeebe:
-    container_name: zeebe_broker
-    image: camunda/zeebe:8.0.5
+
+  postgres:
+    container_name: zeebe_postgres
+    image: postgres:12.2
+    restart: always
     environment:
-      - ZEEBE_LOG_LEVEL=debug
-    ports:
-      - "26500:26500"
-      - "9600:9600"
-      - "5701:5701"
+      POSTGRES_PASSWORD: postgres
     volumes:
-      - ./zeebe-hazelcast-exporter.jar:/usr/local/zeebe/exporters/zeebe-hazelcast-exporter.jar
-      - ./application.yaml:/usr/local/zeebe/config/application.yaml
+      - ./docker-postgres-init.sh:/docker-entrypoint-initdb.d/init-user-db.sh
+      - postgres-data:/var/lib/postgresql/data/
     networks:
       - zeebe_network
 
-  simple-monitor-postgres:
-    container_name: zeebe-simple-monitor-postgres
+  zeebe:
+    container_name: zeebe_broker
+    image: ghcr.io/camunda-community-hub/zeebe-with-hazelcast-exporter:8.0.5
+    environment:
+      - ZEEBE_LOG_LEVEL=debug
+      - ZEEBE_CLOCK_CONTROLLED=true
+    ports:
+      - "26500:26500"
+      - "5701:5701"
+    networks:
+      - zeebe_network
+
+  zeebe-monitor:
+    container_name: zeebe_monitor
     image: ghcr.io/camunda-community-hub/zeebe-simple-monitor:2.4.0
     environment:
       - zeebe.client.broker.gateway-address=zeebe:26500
       - zeebe.client.worker.hazelcast.connection=zeebe:5701
-      - spring.datasource.url=jdbc:postgresql://postgres:5432/postgres
-      - spring.datasource.username=postgres
-      - spring.datasource.password=zeebe
+      - spring.datasource.url=jdbc:postgresql://postgres:5432/zeebe_monitor
+      - spring.datasource.username=zeebe_monitor
+      - spring.datasource.password=zeebe_monitor
       - spring.datasource.driverClassName=org.postgresql.Driver
       - spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
     ports:
-      - "8082:8082"
+      - "8081:8082"
     depends_on:
       - zeebe
       - postgres
     networks:
       - zeebe_network
 
-  postgres:
-    image: postgres:12.2
-    restart: always
+  zeebe-tasklist:
+    container_name: zeebe_tasklist
+    image: ghcr.io/camunda-community-hub/zeebe-simple-tasklist:1.0.1
     environment:
-      POSTGRES_PASSWORD: zeebe
-    volumes:
-      - postgres-data:/var/lib/postgresql/data/
+      - zeebe.client.broker.gateway-address=zeebe:26500
+      - zeebe.client.worker.hazelcast.connection=zeebe:5701
+      - spring.datasource.url=jdbc:postgresql://postgres:5432/zeebe_tasklist
+      - spring.datasource.username=zeebe_tasklist
+      - spring.datasource.password=zeebe_tasklist
+      - spring.datasource.driverClassName=org.postgresql.Driver
+      - spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+    ports:
+      - "8082:8081"
+    depends_on:
+      - zeebe
+      - postgres
     networks:
       - zeebe_network
+
+  zeebe-play:
+    container_name: zeebe_play
+    image: ghcr.io/camunda-community-hub/zeebe-play:1.0.0
+    environment:
+      - ZEEBE_ENGINE=remote
+      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
+      - ZEEBE_CLOCK_ENDPOINT=zeebe:9600/actuator/clock
+      - ZEEBE_CLIENT_WORKER_HAZELCAST_CONNECTION=zeebe:5701
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/zeebe_play
+      - SPRING_DATASOURCE_USERNAME=zeebe_play
+      - SPRING_DATASOURCE_PASSWORD=zeebe_play
+      - SPRING_DATASOURCE_DRIVERCLASSNAME=org.postgresql.Driver
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.PostgreSQLDialect
+      - SPRING_JPA_HIBERNATE_DLL_AUTO=create
+    ports:
+      - "8083:8080"
+    networks:
+      - zeebe_network
+    depends_on:
+      - zeebe
+      - postgres
+    profiles:
+      - play
+
+  graphql-engine:
+    container_name: zeebe_api
+    image: hasura/graphql-engine:v2.11.2.cli-migrations-v3
+    ports:
+    - "8090:8080"
+    restart: always
+    environment:
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://zeebe_api:zeebe_api@postgres:5432/zeebe_api
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+    volumes:
+      - ./docker-hasura/migrations:/hasura-migrations
+      - ./docker-hasura/metadata:/hasura-metadata
+    networks:
+      - zeebe_network
+    depends_on:
+    - postgres
+
+  mailhog:
+    container_name: zeebe_smtp
+    image: mailhog/mailhog
+    logging:
+      driver: 'none'  # disable saving logs
+    ports:
+      - 1025:1025 # smtp server
+      - 8025:8025 # web ui
 
 volumes:
   postgres-data:

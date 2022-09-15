@@ -1,0 +1,13 @@
+table:
+  name: process
+  schema: public
+array_relationships:
+  - name: process_instances
+    using:
+      manual_configuration:
+        column_mapping:
+          key_: process_definition_key_
+        insertion_order: null
+        remote_table:
+          name: process_instance
+          schema: public
