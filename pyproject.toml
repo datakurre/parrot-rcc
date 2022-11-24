@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "parrot-rcc"
-version = "0.1.1"
+version = "0.1.2"
 description = "Zeebe external task Robot Framework RCC client"
 authors = ["Asko Soukka <asko.soukka@iki.fi>"]
-license = "BSD-3"
+license = "BSD-3-Clause"
 readme = "README.md"
 homepage = "https://github.com/datakurre/parrot-rcc"
 repository = "https://github.com/datakurre/parrot-rcc"
