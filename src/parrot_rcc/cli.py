@@ -1,8 +1,16 @@
-from parrot_rcc.types import LogLevel
+from parrot_rcc.adapter import ZeebeVariablesAdapter
+from parrot_rcc.errors import ItemReleaseWithBusinessError, ItemReleaseWithFailure
+from parrot_rcc.types import (
+    LogLevel,
+    ItemRelease,
+    ItemReleaseState,
+    ItemReleaseException,
+    ItemReleaseExceptionType,
+)
 from parrot_rcc.types import Options
 from parrot_rcc.utils import setup_logging
 from pathlib import Path
-from pyzeebe import create_camunda_cloud_channel
+from pyzeebe import create_camunda_cloud_channel, JobStatus
 from pyzeebe import create_insecure_channel
 from pyzeebe import Job
 from pyzeebe import TaskConfig
@@ -27,6 +35,27 @@ import yaml
 os.environ["GRPC_ENABLE_FORK_SUPPORT"] = "0"
 
 logger = logging.getLogger(__name__)
+
+WORK_ITEM_ADAPTER = """\
+from RPA.Robocorp.WorkItems import FileAdapter, RobocorpAdapter
+
+import os
+import json
+
+class WorkItemAdapter(FileAdapter):
+    def release_input(self, item_id, state, exception=None):
+        body = {"workItemId": item_id, "state": state.value}
+        if exception:
+            body["exception"] = {
+                "type": (exception.get("type") or "").strip(),
+                "code": (exception.get("code") or "").strip(),
+                "message": (exception.get("message") or "").strip(),
+            }
+        path = os.environ["RPA_RELEASE_WORKITEM_PATH"]
+        with open(path, "w", encoding="utf-8") as fp:
+            fp.write(json.dumps(body))
+        super(WorkItemAdapter, self).release_input(item_id, state, exception)
+"""
 
 
 async def run(program: str, args: List[str], cwd: str, env: Dict[str, str]):
@@ -82,9 +111,13 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     os.getcwd(),
                     {},
                 )
+                (Path(robot_dir) / "WorkItemAdapter.py").write_text(
+                    WORK_ITEM_ADAPTER, encoding="utf-8"
+                )
                 vault_json_path = Path(data_dir) / "vault.json"
                 items_json_path = Path(data_dir) / "items.json"
                 output_json_path = Path(data_dir) / "items.output.json"
+                release_json_path = Path(data_dir) / "items.release.json"
                 with open(vault_json_path, "w", encoding="utf-8") as fp:
                     fp.write(json.dumps({"env": dict(os.environ)}, indent=4))
                 with open(items_json_path, "w", encoding="utf-8") as fp:
@@ -114,19 +147,62 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     {
                         "RPA_SECRET_MANAGER": "RPA.Robocloud.Secrets.FileSecrets",
                         "RPA_SECRET_FILE": f"{vault_json_path}",
-                        "RPA_WORKITEMS_ADAPTER": "RPA.Robocloud.Items.FileAdapter",
+                        "RPA_WORKITEMS_ADAPTER": "WorkItemAdapter.WorkItemAdapter",
                         "RPA_INPUT_WORKITEM_PATH": f"{items_json_path}",
                         "RPA_OUTPUT_WORKITEM_PATH": f"{output_json_path}",
+                        "RPA_RELEASE_WORKITEM_PATH": f"{release_json_path}",
                         "RC_WORKSPACE_ID": "1",
                         "RC_WORKITEM_ID": "1",
                     },
                 )
-                if (output_json_path).exists():
+
+                payload = {}
+                if output_json_path.exists():
                     with open(output_json_path, "r", encoding="utf-8") as fp:
                         output_json = json.loads(fp.read())
                         for item in output_json:
-                            return item.get("payload") or {}
-                return {}
+                            payload = item.get("payload") or {}
+                            break
+
+                # Resolve possible item release state
+                if release_json_path.exists():
+                    with open(release_json_path, "r", encoding="utf-8") as fp:
+                        release_json = json.loads(fp.read())
+                else:
+                    release_json = {}
+                release = ItemRelease(
+                    state=ItemReleaseState.FAILED
+                    if release_json.get("state") == "FAILED"
+                    else ItemReleaseState.DONE,
+                    exception=None
+                    if not release_json.get("exception")
+                    else ItemReleaseException(
+                        type=ItemReleaseExceptionType.BUSINESS
+                        if (release_json.get("exception") or {}).get("type")
+                        == "BUSINESS"
+                        else ItemReleaseExceptionType.APPLICATION,
+                        code=(release_json.get("exception") or {}).get("code") or "",
+                        message=(release_json.get("exception") or {}).get("message")
+                        or "",
+                    ),
+                )
+
+                # Raise possible release exception
+                if release.state == ItemReleaseState.FAILED:
+                    if release.exception.type == ItemReleaseExceptionType.BUSINESS:
+                        raise ItemReleaseWithBusinessError(
+                            release.exception.message,
+                            code=release.exception.code,
+                            payload=payload,
+                        )
+                    else:
+                        raise ItemReleaseWithFailure(
+                            release.exception.message,
+                            code=release.exception.code,
+                            payload=payload,
+                        )
+
+                return payload
 
     return execute_task, task_config
 
@@ -136,7 +212,20 @@ async def on_error(exception: Exception, job: Job):
     on_error will be called when the task fails
     """
     logger.exception(exception)
-    await job.set_error_status(f"Failed to handle job {job}. Error: {str(exception)}")
+    if isinstance(exception, ItemReleaseWithBusinessError):
+        await job.zeebe_adapter.set_variables(
+            job.element_instance_key, job.variables, True
+        )
+        await job.set_error_status(str(exception), exception.code)
+    elif isinstance(exception, ItemReleaseWithFailure):
+        await job.zeebe_adapter.set_variables(
+            job.element_instance_key, job.variables, True
+        )
+        await job.set_failure_status(str(exception) or exception.code)
+    else:
+        await job.set_failure_status(
+            f"Failed to handle job {job}. Error: {str(exception)}"
+        )
 
 
 class VariablesDict(dict):
@@ -149,14 +238,21 @@ class VariablesDict(dict):
         super().update(d)
 
 
-def before_job(job: Job) -> Job:
+async def before_job(job: Job) -> Job:
+    # Ensure that job variables contain only the variables returned by the worker
     logger.debug(f"Before job: {job}")
     job.variables = VariablesDict(job.variables)
     return job
 
 
-def after_job(job: Job) -> Job:
+async def after_job(job: Job) -> Job:
+    # Save all variables as local variables and clear variables for complete call
     logger.debug(f"After job: {job}")
+    if job.status == JobStatus.Running:
+        await job.zeebe_adapter.set_variables(
+            job.element_instance_key, job.variables, True
+        )
+        job.variables.clear()
     return job
 
 
@@ -242,6 +338,9 @@ def main(
         )
 
     worker = ZeebeWorker(channel)
+    worker.zeebe_adapter.__class__.__bases__ = (
+        worker.zeebe_adapter.__class__.__bases__ + (ZeebeVariablesAdapter,)
+    )
     semaphore = asyncio.Semaphore(config.task_max_jobs)
 
     for task, robot in tasks.items():

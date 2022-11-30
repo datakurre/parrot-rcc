@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 import multiprocessing
+from typing import Optional
 
 
 class LogLevel(str, Enum):
@@ -15,6 +16,45 @@ class LogLevel(str, Enum):
 
     def __str__(self):
         return super().__str__().upper()
+
+
+class ItemReleaseState(str, Enum):
+    """Work item state. (set when released)"""
+
+    DONE = "COMPLETED"
+    FAILED = "FAILED"
+
+    def __repr__(self):
+        return f"{self}".upper()
+
+    def __str__(self):
+        return super().__str__().upper()
+
+
+class ItemReleaseExceptionType(str, Enum):
+    """Work item state. (set when released)"""
+
+    APPLICATION = "APPLICATION"
+    BUSINESS = "BUSINESS"
+
+    def __repr__(self):
+        return f"{self}".upper()
+
+    def __str__(self):
+        return super().__str__().upper()
+
+
+@dataclass
+class ItemReleaseException:
+    type: ItemReleaseExceptionType
+    code: str
+    message: str
+
+
+@dataclass
+class ItemRelease:
+    state: ItemReleaseState
+    exception: Optional[ItemReleaseException]
 
 
 @dataclass
