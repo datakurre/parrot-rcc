@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
-import multiprocessing
 from typing import Optional
+import multiprocessing
 
 
 class LogLevel(str, Enum):
@@ -63,6 +63,13 @@ class Options:
     rcc_controller: str = "parrot-rcc"
     rcc_fixed_spaces: bool = False
     rcc_telemetry: bool = False
+
+    rcc_s3_url: str = "http://localhost:9000"
+    rcc_s3_access_key_id: str = "minioadmin"
+    rcc_s3_secret_access_key: str = "minioadmin"
+    rcc_s3_region: str = "us-east-1"
+    rcc_s3_bucket_logs: str = "rcc"
+    rcc_s3_bucket_data: str = "zeebe"
 
     task_timeout_ms: int = (60 * 60 * 1000,)  # one hour
     task_max_jobs: int = (multiprocessing.cpu_count(),)

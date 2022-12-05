@@ -1,6 +1,5 @@
-from typing import Dict
-
 from pyzeebe.errors import PyZeebeError
+from typing import Dict
 
 
 class ElementInstanceNotFoundError(PyZeebeError):

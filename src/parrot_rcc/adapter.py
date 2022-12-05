@@ -1,19 +1,14 @@
-import json
-import logging
-from typing import Dict
-
-import grpc
-from pyzeebe.errors import (
-    InvalidJSONError,
-)
+from parrot_rcc.errors import ElementInstanceNotFoundError
+from pyzeebe.errors import InvalidJSONError
 from pyzeebe.grpc_internals.grpc_utils import is_error_status
 from pyzeebe.grpc_internals.zeebe_adapter_base import ZeebeAdapterBase
-from zeebe_grpc.gateway_pb2 import (
-    SetVariablesResponse,
-    SetVariablesRequest,
-)
+from typing import Dict
+from zeebe_grpc.gateway_pb2 import SetVariablesRequest
+from zeebe_grpc.gateway_pb2 import SetVariablesResponse
+import grpc
+import json
+import logging
 
-from parrot_rcc.errors import ElementInstanceNotFoundError
 
 logger = logging.getLogger(__name__)
 
