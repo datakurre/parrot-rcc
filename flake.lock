@@ -1,0 +1,116 @@
+{
+  "nodes": {
+    "flake-utils": {
+      "locked": {
+        "lastModified": 1667395993,
+        "narHash": "sha256-nuEHfE/LcWyuSWnS8t12N1wc105Qtau+/OdUAjtQ0rA=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "5aed5285a952e0b949eb3ba02c12fa4fcfef535f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "flake-utils_2": {
+      "locked": {
+        "lastModified": 1667395993,
+        "narHash": "sha256-nuEHfE/LcWyuSWnS8t12N1wc105Qtau+/OdUAjtQ0rA=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "5aed5285a952e0b949eb3ba02c12fa4fcfef535f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1669316115,
+        "narHash": "sha256-olvHZVUaBp5uwm5XfrqPY0K4Itt48yMTDNu/G2i5R2s=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "d4556b01cd32e95567656e7d9e11f39f011b5390",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "release-22.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "poetry2nix": {
+      "inputs": {
+        "flake-utils": "flake-utils_2",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1669558196,
+        "narHash": "sha256-Ilwh5uvq+jgXI+3K8eXENLuMPPfWwUhOkXXvv2oElWI=",
+        "owner": "nix-community",
+        "repo": "poetry2nix",
+        "rev": "a749fbe5608ae911f71ac6d3d2b1bc0945265f32",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "poetry2nix",
+        "type": "github"
+      }
+    },
+    "rcc": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1667908409,
+        "narHash": "sha256-gXaFMXMRrMn/U4hSfnsWowycHMa6OYR8NJexAFOo2WY=",
+        "owner": "robocorp",
+        "repo": "rcc",
+        "rev": "65cb4b6f9fb30cffd61c3f0d3617d33b51390c61",
+        "type": "github"
+      },
+      "original": {
+        "owner": "robocorp",
+        "repo": "rcc",
+        "rev": "65cb4b6f9fb30cffd61c3f0d3617d33b51390c61",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs",
+        "poetry2nix": "poetry2nix",
+        "rcc": "rcc",
+        "zbctl": "zbctl"
+      }
+    },
+    "zbctl": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1667317037,
+        "narHash": "sha256-K1ci85w+U/j7dB/eH1XBc1RWueXk1Mizbc1QvDUAYeA=",
+        "owner": "camunda",
+        "repo": "zeebe",
+        "rev": "5e5f7e076d48eab364758d9b604cb868e9864a47",
+        "type": "github"
+      },
+      "original": {
+        "owner": "camunda",
+        "ref": "clients/go/v8.1.3",
+        "repo": "zeebe",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

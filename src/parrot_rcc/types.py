@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 import multiprocessing
 
 
@@ -17,12 +18,58 @@ class LogLevel(str, Enum):
         return super().__str__().upper()
 
 
+class ItemReleaseState(str, Enum):
+    """Work item state. (set when released)"""
+
+    DONE = "COMPLETED"
+    FAILED = "FAILED"
+
+    def __repr__(self):
+        return f"{self}".upper()
+
+    def __str__(self):
+        return super().__str__().upper()
+
+
+class ItemReleaseExceptionType(str, Enum):
+    """Work item state. (set when released)"""
+
+    APPLICATION = "APPLICATION"
+    BUSINESS = "BUSINESS"
+
+    def __repr__(self):
+        return f"{self}".upper()
+
+    def __str__(self):
+        return super().__str__().upper()
+
+
+@dataclass
+class ItemReleaseException:
+    type: ItemReleaseExceptionType
+    code: str
+    message: str
+
+
+@dataclass
+class ItemRelease:
+    state: ItemReleaseState
+    exception: Optional[ItemReleaseException]
+
+
 @dataclass
 class Options:
     rcc_executable: str = "rcc"
     rcc_controller: str = "parrot-rcc"
     rcc_fixed_spaces: bool = False
     rcc_telemetry: bool = False
+
+    rcc_s3_url: str = "http://localhost:9000"
+    rcc_s3_access_key_id: str = "minioadmin"
+    rcc_s3_secret_access_key: str = "minioadmin"
+    rcc_s3_region: str = "us-east-1"
+    rcc_s3_bucket_logs: str = "rcc"
+    rcc_s3_bucket_data: str = "zeebe"
 
     task_timeout_ms: int = (60 * 60 * 1000,)  # one hour
     task_max_jobs: int = (multiprocessing.cpu_count(),)
