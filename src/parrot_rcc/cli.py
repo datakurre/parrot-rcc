@@ -68,6 +68,22 @@ class WorkItemAdapter(FileAdapter):
 """
 
 
+class lazypprint:
+    def __init__(self, data):
+        self.data = data
+
+    def __str__(self):
+        return pprint.pformat(self.data, indent=4)
+
+
+class lazydecode:
+    def __init__(self, data: str):
+        self.data = data
+
+    def __str__(self):
+        return self.data.decode()
+
+
 async def run(
     program: str, args: List[str], cwd: str, env: Dict[str, str]
 ) -> Tuple[bytes, bytes]:
@@ -84,9 +100,9 @@ async def run(
     assert proc.returncode == 0, f"{stderr.decode()}"
 
     if stderr:
-        logger.debug(f"{stderr.decode()}")
+        logger.debug("%s", lazydecode(stderr))
     if stdout:
-        logger.debug(f"{stdout.decode()}")
+        logger.debug("%s", lazydecode(stdout))
     logger.debug(
         f"{program + ' ' + ' '.join(map(str, args))!r} exited with {proc.returncode}."
     )
@@ -362,7 +378,7 @@ class VariablesDict(dict):
 
 async def before_job(job: Job) -> Job:
     # Ensure that job variables contain only the variables returned by the worker
-    logger.debug(f"Before job: {pprint.pformat(job, indent=4)}")
+    logger.debug("Before job: %s", lazypprint(job))
     job.variables = VariablesDict(
         job.variables
         | {
@@ -375,7 +391,7 @@ async def before_job(job: Job) -> Job:
 
 async def after_job(job: Job) -> Job:
     # Save all variables as local variables and clear variables for complete call
-    logger.debug(f"After job: {pprint.pformat(job, indent=4)}")
+    logger.debug("After job: %s", lazypprint(job))
     if job.status == JobStatus.Running:
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
@@ -503,9 +519,9 @@ def main(
         )
 
     if tasks:
-        logger.info(f"Tasks: {tasks}")
+        logger.info("Tasks: %s", lazypprint(tasks))
     else:
-        logger.warning(f"No tasks: {tasks}")
+        logger.warning("No tasks: %s", lazypprint(tasks))
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(
