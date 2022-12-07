@@ -75,6 +75,7 @@ class Options:
     task_max_jobs: int = (multiprocessing.cpu_count(),)
 
     log_level: LogLevel = "info"
+    debug: bool = False
 
     zeebe_hostname: str = "localhost"
     zeebe_port: int = 26500

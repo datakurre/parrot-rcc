@@ -43,7 +43,7 @@ class DebugFormatter(DefaultFormatter):
     }
 
 
-def setup_logging(logger: logging.Logger, log_level: LogLevel):
+def setup_logging(logger: logging.Logger, log_level: LogLevel, debug: bool = False):
     # create logger with 'spam_application'
     logger.setLevel(f"{log_level}")
 
@@ -51,9 +51,7 @@ def setup_logging(logger: logging.Logger, log_level: LogLevel):
     ch = logging.StreamHandler()
     ch.setLevel(f"{log_level}")
 
-    ch.setFormatter(
-        DebugFormatter() if log_level == LogLevel.DEBUG else DefaultFormatter()
-    )
+    ch.setFormatter(DebugFormatter() if debug else DefaultFormatter())
 
     logger.addHandler(ch)
 

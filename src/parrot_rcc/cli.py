@@ -73,7 +73,7 @@ class lazypprint:
         self.data = data
 
     def __str__(self):
-        return pprint.pformat(self.data, indent=4)
+        return pprint.pformat(self.data, indent=4, width=60)
 
 
 class lazydecode:
@@ -431,6 +431,7 @@ async def after_job(job: Job) -> Job:
 @click.option("--camunda-cluster-id", default="", envvar="CAMUNDA_CLIENT_SECRET")
 @click.option("--camunda-region", default="", envvar="CAMUNDA_CLIENT_SECRET")
 @click.option("--log-level", default="info", envvar="LOG_LEVEL")
+@click.option("--debug", is_flag=True, default=False, envvar="DEBUG")
 def main(
     robots,
     rcc_executable,
@@ -452,6 +453,7 @@ def main(
     camunda_cluster_id,
     camunda_region,
     log_level,
+    debug,
 ):
     """Zeebe external task Robot Framework RCC client
 
@@ -476,11 +478,19 @@ def main(
         camunda_client_secret=camunda_client_secret,
         camunda_cluster_id=camunda_cluster_id,
         camunda_region=camunda_region,
-        log_level=LogLevel(log_level),
+        log_level=LogLevel(log_level) if not debug else LogLevel("debug"),
+        debug=debug,
     )
 
-    setup_logging(logger, config.log_level)
-    logger.info(dataclasses.replace(config, camunda_client_secret="*" * 8))
+    setup_logging(logger, config.log_level, debug)
+    logger.info(
+        dataclasses.replace(
+            config,
+            camunda_client_secret="*" * 8,
+            rcc_s3_access_key_id="*" * 8,
+            rcc_s3_secret_access_key="*" * 8,
+        )
+    )
 
     tasks = {}
     for robot in robots:
