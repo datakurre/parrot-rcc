@@ -68,12 +68,30 @@ class WorkItemAdapter(FileAdapter):
 """
 
 
+def job_to_dict(job: Job) -> dict:
+    return {
+        "jobKey": job.key,
+        "taskType": job.type,
+        "processInstanceKey": job.process_instance_key,
+        "bpmnProcessId": job.bpmn_process_id,
+        "processDefinitionVersion": job.process_definition_version,
+        "processDefinitionKey": job.process_definition_key,
+        "elementId": job.element_id,
+        "elementInstanceKey": job.element_instance_key,
+        "customHeaders": job.custom_headers,
+        "worker": job.worker,
+        "retries": job.retries,
+        "deadline": job.deadline,
+        "variables": job.variables,
+    }
+
+
 class lazypprint:
     def __init__(self, data):
         self.data = data
 
     def __str__(self):
-        return pprint.pformat(self.data, indent=4, width=60)
+        return pprint.pformat(self.data)
 
 
 class lazydecode:
@@ -378,7 +396,7 @@ class VariablesDict(dict):
 
 async def before_job(job: Job) -> Job:
     # Ensure that job variables contain only the variables returned by the worker
-    logger.debug("Before job: %s", lazypprint(job))
+    logger.debug("Before job: %s", lazypprint(job_to_dict(job)))
     job.variables = VariablesDict(
         job.variables
         | {
@@ -391,7 +409,7 @@ async def before_job(job: Job) -> Job:
 
 async def after_job(job: Job) -> Job:
     # Save all variables as local variables and clear variables for complete call
-    logger.debug("After job: %s", lazypprint(job))
+    logger.debug("After job: %s", lazypprint(job_to_dict(job)))
     if job.status == JobStatus.Running:
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
