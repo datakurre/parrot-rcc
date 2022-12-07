@@ -36,6 +36,7 @@ import json
 import logging
 import multiprocessing
 import os
+import pprint
 import re
 import uvloop
 import yaml
@@ -361,7 +362,7 @@ class VariablesDict(dict):
 
 async def before_job(job: Job) -> Job:
     # Ensure that job variables contain only the variables returned by the worker
-    logger.debug(f"Before job: {job}")
+    logger.debug(f"Before job: {pprint.pformat(job, indent=4)}")
     job.variables = VariablesDict(
         job.variables
         | {
@@ -374,7 +375,7 @@ async def before_job(job: Job) -> Job:
 
 async def after_job(job: Job) -> Job:
     # Save all variables as local variables and clear variables for complete call
-    logger.debug(f"After job: {job}")
+    logger.debug(f"After job: {pprint.pformat(job, indent=4)}")
     if job.status == JobStatus.Running:
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
