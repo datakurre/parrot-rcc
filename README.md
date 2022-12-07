@@ -12,8 +12,14 @@ Usage: parrot-rcc [OPTIONS] [ROBOTS]...
 Options:
   --rcc-executable TEXT
   --rcc-controller TEXT
-  --rcc-fixed-spaces BOOLEAN
-  --rcc-telemetry BOOLEAN
+  --rcc-fixed-spaces
+  --rcc-s3-url TEXT
+  --rcc-s3-access-key-id TEXT
+  --rcc-s3-secret-access-key TEXT
+  --rcc-s3-region TEXT
+  --rcc-s3-bucket-logs TEXT
+  --rcc-s3-bucket-data TEXT
+  --rcc-telemetry
   --task-timeout-ms INTEGER
   --task-max-jobs INTEGER
   --zeebe-hostname TEXT
@@ -23,5 +29,6 @@ Options:
   --camunda-cluster-id TEXT
   --camunda-region TEXT
   --log-level TEXT
-  --help                        Show this message and exit.
+  --debug
+  --help                          Show this message and exit.
 ```
