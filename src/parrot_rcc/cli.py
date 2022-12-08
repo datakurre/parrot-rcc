@@ -546,9 +546,10 @@ def main(
             task_builder.build_task(*create_task(task, str(robot), semaphore, config))
         )
 
+
+    loop = asyncio.get_event_loop()
     if tasks:
         logger.info("Tasks: %s", lazypprint(tasks))
-        loop = asyncio.get_event_loop()
         loop.run_until_complete(
             run(
                 config.rcc_executable,
