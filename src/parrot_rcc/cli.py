@@ -549,7 +549,7 @@ def main(
     if tasks:
         logger.info("Tasks: %s", lazypprint(tasks))
     else:
-        logger.warning("No tasks: %s", lazypprint(tasks))
+        logger.error("No tasks: %s", lazypprint(tasks))
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(
@@ -560,7 +560,14 @@ def main(
             {},
         )
     )
-    loop.run_until_complete(worker.work())
+    if tasks:
+        loop.run_until_complete(worker.work())
+    else:
+        loop.run_until_complete(sleep(3))
+
+
+async def sleep(timeout: int):
+    return await asyncio.sleep(timeout)
 
 
 if __name__ == "__main__":
