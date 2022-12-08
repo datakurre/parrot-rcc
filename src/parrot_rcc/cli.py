@@ -548,21 +548,18 @@ def main(
 
     if tasks:
         logger.info("Tasks: %s", lazypprint(tasks))
-    else:
-        logger.error("No tasks: %s", lazypprint(tasks))
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(
-        run(
-            config.rcc_executable,
-            ["configuration", "identity", "-e" if config.rcc_telemetry else "-t"],
-            os.getcwd(),
-            {},
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(
+            run(
+                config.rcc_executable,
+                ["configuration", "identity", "-e" if config.rcc_telemetry else "-t"],
+                os.getcwd(),
+                {},
+            )
         )
-    )
-    if tasks:
         loop.run_until_complete(worker.work())
     else:
+        logger.error("No tasks: %s", lazypprint(tasks))
         loop.run_until_complete(sleep(3))
 
 
