@@ -2,7 +2,6 @@ from os.path import basename
 from parrot_rcc.adapter import ZeebeVariablesAdapter
 from parrot_rcc.errors import ItemReleaseWithBusinessError
 from parrot_rcc.errors import ItemReleaseWithFailure
-from parrot_rcc.s3 import s3_download_file
 from parrot_rcc.s3 import s3_generate_presigned_url
 from parrot_rcc.s3 import s3_list_files
 from parrot_rcc.s3 import s3_put_object
@@ -48,11 +47,18 @@ logger = logging.getLogger(__name__)
 
 WORK_ITEM_ADAPTER = """\
 from RPA.Robocorp.WorkItems import FileAdapter, RobocorpAdapter
+from RPA.Robocorp.utils import Requests
+from urllib.parse import urlparse
 
 import os
 import json
+import logging
 
 class WorkItemAdapter(FileAdapter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._workitem_requests = Requests("", default_headers={})
+
     def release_input(self, item_id, state, exception=None):
         body = {"workItemId": item_id, "state": state.value}
         if exception:
@@ -65,6 +71,24 @@ class WorkItemAdapter(FileAdapter):
         with open(path, "w", encoding="utf-8") as fp:
             fp.write(json.dumps(body))
         super(WorkItemAdapter, self).release_input(item_id, state, exception)
+
+    def get_file(self, item_id: str, name: str) -> bytes:
+        source, item = self._get_item(item_id)
+        files = item.get("files", {})
+        path = files[name]
+        if urlparse(path).scheme in ["http", "https"]:
+            # Path is expected to be S3 presigned URL
+            logging.info("Downloading work item file at: %s", item_id)
+            # Perform the actual file download.
+            response = self._workitem_requests.get(
+                path,
+                _handle_error=lambda resp: resp.raise_for_status(),
+                _sensitive=True,
+                headers={},
+            )
+            return response.content
+        else:
+            return super().get_file(item_id, name)
 """
 
 
@@ -95,7 +119,7 @@ class lazypprint:
 
 
 class lazydecode:
-    def __init__(self, data: str):
+    def __init__(self, data: bytes):
         self.data = data
 
     def __str__(self):
@@ -105,6 +129,7 @@ class lazydecode:
 async def run(
     program: str, args: List[str], cwd: str, env: Dict[str, str]
 ) -> Tuple[bytes, bytes]:
+    logger.debug(f"{program + ' ' + ' '.join(map(str, args))}")
     proc = await asyncio.create_subprocess_exec(
         program,
         *args,
@@ -115,16 +140,18 @@ async def run(
     )
 
     stdout, stderr = await proc.communicate()
-    assert proc.returncode == 0, f"{stderr.decode()}"
+    stdout = stdout.strip() or b""
+    stderr = stderr.strip() or b""
+
+    assert proc.returncode == 0, lazydecode(stderr)
 
     if stderr:
         logger.debug("%s", lazydecode(stderr))
     if stdout:
         logger.debug("%s", lazydecode(stdout))
-    logger.debug(
-        f"{program + ' ' + ' '.join(map(str, args))!r} exited with {proc.returncode}."
-    )
-    return stdout or b"", stderr or b""
+    logger.debug(f"exit code {proc.returncode}")
+
+    return stdout, stderr
 
 
 def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Options):
@@ -198,10 +225,13 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                 ):
                     file_path = Path(data_dir) / key.split(",", 1)[-1]
                     file_path.parent.mkdir(parents=True, exist_ok=True)
-                    await s3_download_file(
-                        s3_client, config.rcc_s3_bucket_data, key, str(file_path)
+                    items_files[basename(key)] = await s3_generate_presigned_url(
+                        s3_client,
+                        config.rcc_s3_bucket_data,
+                        key,
+                        config.rcc_s3_url_expires_in,
                     )
-                    items_files[basename(key)] = key.split(",", 1)[-1]
+
                 with open(items_json_path, "w", encoding="utf-8") as fp:
                     fp.write(
                         json.dumps(
@@ -267,6 +297,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                             s3_client,
                             config.rcc_s3_bucket_data,
                             f"{__process_instance_key}/{key}",
+                            config.rcc_s3_url_expires_in,
                         )
 
                 for file_path in Path(robot_dir).glob("*/**/log.html"):
@@ -281,6 +312,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                         s3_client,
                         config.rcc_s3_bucket_logs,
                         f"{__process_instance_key}/{__element_instance_key}/log.html",
+                        config.rcc_s3_url_expires_in,
                     )
                 for file_path in Path(robot_dir).glob("*/**/output.xml"):
                     inline_screenshots(str(file_path))
@@ -294,6 +326,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                         s3_client,
                         config.rcc_s3_bucket_logs,
                         f"{__process_instance_key}/{__element_instance_key}/output.xml",
+                        config.rcc_s3_url_expires_in,
                     )
                 await s3_put_object(
                     s3_client,
@@ -306,6 +339,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     s3_client,
                     config.rcc_s3_bucket_logs,
                     f"{__process_instance_key}/{__element_instance_key}/stdout.txt",
+                    config.rcc_s3_url_expires_in,
                 )
                 await s3_put_object(
                     s3_client,
@@ -318,6 +352,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     s3_client,
                     config.rcc_s3_bucket_logs,
                     f"{__process_instance_key}/{__element_instance_key}/stderr.txt",
+                    config.rcc_s3_url_expires_in,
                 )
 
                 # Resolve possible item release state
@@ -423,9 +458,18 @@ async def after_job(job: Job) -> Job:
 @click.option("--rcc-executable", default="rcc", envvar="RCC_EXECUTABLE")
 @click.option("--rcc-controller", default="parrot-rcc", envvar="RCC_CONTROLLER")
 @click.option(
-    "--rcc-fixed-spaces", is_flag=True, default=False, envvar="RCC_FIXED_SPACES"
+    "--rcc-fixed-spaces",
+    is_flag=True,
+    default=False,
+    envvar="RCC_FIXED_SPACES",
+    help="Allows RCC to execute multiple tasks concurrently in the same dependency environment.",
 )
-@click.option("--rcc-s3-url", default="http://localhost:9000", envvar="RCC_S3_URL")
+@click.option(
+    "--rcc-s3-url",
+    default="http://localhost:9000",
+    envvar="RCC_S3_URL",
+    help="Base URL of the S3 compatible service used to store execution artifacts and work item files.",
+)
 @click.option(
     "--rcc-s3-access-key-id", default="minioadmin", envvar="RCC_S3_ACCESS_KEY_ID"
 )
@@ -437,6 +481,12 @@ async def after_job(job: Job) -> Job:
 @click.option("--rcc-s3-region", default="us-east-1", envvar="RCC_S3_REGION")
 @click.option("--rcc-s3-bucket-logs", default="rcc", envvar="RCC_S3_BUCKET_LOGS")
 @click.option("--rcc-s3-bucket-data", default="zeebe", envvar="RCC_S3_BUCKET_DATA")
+@click.option(
+    "--rcc-s3-url-expires-in",
+    default=3600 * 24 * 7,
+    envvar="RCC_S3_URL_EXPIRES_IN",
+    help="Amount of seconds after generated presigned URLs to download S3 stored files without further authorization expire.",
+)
 @click.option("--rcc-telemetry", is_flag=True, default=False, envvar="RCC_TELEMETRY")
 @click.option("--task-timeout-ms", default=60 * 60 * 1000, envvar="TASK_TIMEOUT_MS")
 @click.option(
@@ -461,6 +511,7 @@ def main(
     rcc_s3_region,
     rcc_s3_bucket_logs,
     rcc_s3_bucket_data,
+    rcc_s3_url_expires_in,
     rcc_telemetry,
     task_timeout_ms,
     task_max_jobs,
@@ -475,7 +526,10 @@ def main(
 ):
     """Zeebe external task Robot Framework RCC client
 
-    [ROBOTS] could also be passed as a space separated env RCC_ROBOTS
+    ROBOTS are RCC compatible automation code packages,
+    which are most often created with `rcc robot wrap [-z robot.zip]`.
+    They can also be passed as a space separated env RCC_ROBOTS
+
     """
     config = Options(
         rcc_executable=rcc_executable,
@@ -487,6 +541,7 @@ def main(
         rcc_s3_region=rcc_s3_region,
         rcc_s3_bucket_logs=rcc_s3_bucket_logs,
         rcc_s3_bucket_data=rcc_s3_bucket_data,
+        rcc_s3_url_expires_in=rcc_s3_url_expires_in,
         rcc_telemetry=rcc_telemetry,
         task_timeout_ms=task_timeout_ms,
         task_max_jobs=task_max_jobs,
@@ -509,6 +564,9 @@ def main(
             rcc_s3_secret_access_key="*" * 8,
         )
     )
+
+    if len(robots) == 1 and "," in robots[0]:
+        robots = [x.strip() for x in robots[0].split(",")]
 
     tasks = {}
     for robot in robots:
@@ -545,7 +603,6 @@ def main(
         worker._add_task(
             task_builder.build_task(*create_task(task, str(robot), semaphore, config))
         )
-
 
     loop = asyncio.get_event_loop()
     if tasks:

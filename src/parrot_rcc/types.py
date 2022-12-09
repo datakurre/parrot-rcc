@@ -70,8 +70,9 @@ class Options:
     rcc_s3_region: str = "us-east-1"
     rcc_s3_bucket_logs: str = "rcc"
     rcc_s3_bucket_data: str = "zeebe"
+    rcc_s3_url_expires_in: int = 3600 * 24 * 7  # one week
 
-    task_timeout_ms: int = (60 * 60 * 1000,)  # one hour
+    task_timeout_ms: int = 60 * 60 * 1000  # one hour
     task_max_jobs: int = (multiprocessing.cpu_count(),)
 
     log_level: LogLevel = "info"

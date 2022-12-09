@@ -39,7 +39,10 @@ async def s3_download_file(
 
 
 def s3_generate_presigned_url_sync(
-    s3_client: Any, s3_bucket_name: str, s3_key: str
+    s3_client: Any,
+    s3_bucket_name: str,
+    s3_key: str,
+    expires_in: int,
 ) -> None:
     return s3_client.generate_presigned_url(
         ClientMethod="get_object",
@@ -47,7 +50,7 @@ def s3_generate_presigned_url_sync(
             "Bucket": s3_bucket_name,
             "Key": s3_key,
         },
-        ExpiresIn=3600 * 24 * 7,  # one week in seconds
+        ExpiresIn=expires_in,
     )
 
 
@@ -55,6 +58,7 @@ async def s3_generate_presigned_url(
     s3_client: Any,
     s3_bucket_name: str,
     s3_key: str,
+    expires_in: int = 3600 * 24 * 7,  # one week in seconds
     loop=None,
     executor=None,
 ) -> None:
@@ -66,6 +70,7 @@ async def s3_generate_presigned_url(
         s3_client,
         s3_bucket_name,
         s3_key,
+        expires_in,
     )
 
 
