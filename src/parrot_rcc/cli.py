@@ -229,7 +229,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                         s3_client,
                         config.rcc_s3_bucket_data,
                         key,
-                        config.rcc_s3_url_expires_in,
+                        max(1, int(config.task_timeout_ms / 1000)),
                     )
 
                 with open(items_json_path, "w", encoding="utf-8") as fp:
