@@ -2,6 +2,7 @@ from os.path import basename
 from parrot_rcc.adapter import ZeebeVariablesAdapter
 from parrot_rcc.errors import ItemReleaseWithBusinessError
 from parrot_rcc.errors import ItemReleaseWithFailure
+from parrot_rcc.errors import ReleaseException
 from parrot_rcc.s3 import s3_generate_presigned_url
 from parrot_rcc.s3 import s3_list_files
 from parrot_rcc.s3 import s3_put_object
@@ -119,16 +120,16 @@ class lazypprint:
 
 
 class lazydecode:
-    def __init__(self, data: bytes):
+    def __init__(self, *data: bytes):
         self.data = data
 
     def __str__(self):
-        return self.data.decode()
+        return "\n".join([b.decode() for b in self.data])
 
 
 async def run(
     program: str, args: List[str], cwd: str, env: Dict[str, str]
-) -> Tuple[bytes, bytes]:
+) -> Tuple[int, bytes, bytes]:
     logger.debug(f"{program + ' ' + ' '.join(map(str, args))}")
     proc = await asyncio.create_subprocess_exec(
         program,
@@ -143,15 +144,24 @@ async def run(
     stdout = stdout.strip() or b""
     stderr = stderr.strip() or b""
 
-    assert proc.returncode == 0, lazydecode(stderr)
-
     if stderr:
         logger.debug("%s", lazydecode(stderr))
     if stdout:
         logger.debug("%s", lazydecode(stdout))
+
     logger.debug(f"exit code {proc.returncode}")
 
-    return stdout, stderr
+    return proc.returncode, stdout, stderr
+
+
+def fail_reason(robot_dir: str) -> str:
+    reason = ""
+    for file_path in Path(robot_dir).glob("*/**/output.xml"):
+        xml = file_path.read_text()
+        for match in re.findall(r'status="FAIL"[^>]*.([^<]*)', xml, re.M):
+            match = match.strip()
+            reason = match if match else reason
+    return reason
 
 
 def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Options):
@@ -202,12 +212,14 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                 idx = config.task_max_jobs - semaphore._value
                 space = f"parrot-{idx:04}"
             with TemporaryDirectory() as robot_dir, TemporaryDirectory() as data_dir:
-                await run(
+                return_code, stdout, stderr = await run(
                     config.rcc_executable,
                     ["robot", "unwrap", "-d", robot_dir, "-z", robot],
                     os.getcwd(),
                     {},
                 )
+                assert return_code == 0, lazydecode(stderr)
+
                 (Path(robot_dir) / "WorkItemAdapter.py").write_text(
                     WORK_ITEM_ADAPTER, encoding="utf-8"
                 )
@@ -233,18 +245,19 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     )
 
                 with open(items_json_path, "w", encoding="utf-8") as fp:
-                    fp.write(
-                        json.dumps(
-                            [
-                                {
-                                    "payload": kwargs,
-                                    "files": items_files,
-                                }
-                            ],
-                            indent=4,
-                        )
+                    items_json_dump = json.dumps(
+                        [
+                            {
+                                "payload": kwargs,
+                                "files": items_files,
+                            }
+                        ],
+                        indent=4,
                     )
-                stdout, stderr = await run(
+                    fp.write(items_json_dump)
+                    logger.debug("Work item: %s", items_json_dump)
+
+                return_code, stdout, stderr = await run(
                     config.rcc_executable,
                     [
                         "run",
@@ -355,6 +368,16 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     config.rcc_s3_url_expires_in,
                 )
 
+                # Fail job with non-zero exit code
+                if return_code != 0:
+                    reason = fail_reason(robot_dir)
+                    raise ReleaseException(
+                        code="",
+                        message=reason
+                        or "".join([stderr.decode(), stdout.decode()]).strip(),
+                        payload=payload,
+                    )
+
                 # Resolve possible item release state
                 if release_json_path.exists():
                     with open(release_json_path, "r", encoding="utf-8") as fp:
@@ -402,21 +425,36 @@ async def on_error(exception: Exception, job: Job):
     """
     on_error will be called when the task fails
     """
-    logger.exception(exception)
+    logger.error(str(exception))
     if isinstance(exception, ItemReleaseWithBusinessError):
+        # RPA.Robocorp.WorkItems business error
+        job.variables = exception.payload
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
         )
         await job.set_error_status(str(exception), exception.code)
     elif isinstance(exception, ItemReleaseWithFailure):
+        # RPA.Robocorp.WorkItems retryable application failure
+        job.variables = exception.payload
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
         )
         await job.set_failure_status(str(exception) or exception.code)
-    else:
-        await job.set_failure_status(
-            f"Failed to handle job {job}. Error: {str(exception)}"
+    elif isinstance(exception, ReleaseException):
+        # Robot Framework test / task failure -> fail job without retries
+        job.variables = exception.payload
+        await job.zeebe_adapter.set_variables(
+            job.element_instance_key, job.variables, True
         )
+        job.status = JobStatus.Failed
+        await job.zeebe_adapter.fail_job(
+            job_key=job.key, retries=0, message=str(exception)
+        )
+    else:
+        # Unexpected exception -> fail job without retries
+        message = f"Failed to handle job {job}. Error: {str(exception)}"
+        job.status = JobStatus.Failed
+        await job.zeebe_adapter.fail_job(job_key=job.key, retries=0, message=message)
 
 
 class VariablesDict(dict):
@@ -431,6 +469,9 @@ class VariablesDict(dict):
 
 async def before_job(job: Job) -> Job:
     # Ensure that job variables contain only the variables returned by the worker
+    for name in list(job.variables.keys()):
+        if "." in name:
+            job.variables.pop(name)
     logger.debug("Before job: %s", lazypprint(job_to_dict(job)))
     job.variables = VariablesDict(
         job.variables
@@ -607,7 +648,7 @@ def main(
     loop = asyncio.get_event_loop()
     if tasks:
         logger.info("Tasks: %s", lazypprint(tasks))
-        loop.run_until_complete(
+        return_code, stdout, stderr = loop.run_until_complete(
             run(
                 config.rcc_executable,
                 ["configuration", "identity", "-e" if config.rcc_telemetry else "-t"],
@@ -615,6 +656,7 @@ def main(
                 {},
             )
         )
+        assert return_code == 0, lazydecode(stderr)
         loop.run_until_complete(worker.work())
     else:
         logger.error("No tasks: %s", lazypprint(tasks))
