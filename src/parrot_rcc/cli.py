@@ -368,16 +368,6 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                     config.rcc_s3_url_expires_in,
                 )
 
-                # Fail job with non-zero exit code
-                if return_code != 0:
-                    reason = fail_reason(robot_dir)
-                    raise ReleaseException(
-                        code="",
-                        message=reason
-                        or "".join([stderr.decode(), stdout.decode()]).strip(),
-                        payload=payload,
-                    )
-
                 # Resolve possible item release state
                 if release_json_path.exists():
                     with open(release_json_path, "r", encoding="utf-8") as fp:
@@ -405,16 +395,25 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                 if release.state == ItemReleaseState.FAILED:
                     if release.exception.type == ItemReleaseExceptionType.BUSINESS:
                         raise ItemReleaseWithBusinessError(
-                            release.exception.message,
+                            release.exception.message or fail_reason(robot_dir),
                             code=release.exception.code,
                             payload=payload,
                         )
                     else:
                         raise ItemReleaseWithFailure(
-                            release.exception.message,
+                            release.exception.message or fail_reason(robot_dir),
                             code=release.exception.code,
                             payload=payload,
                         )
+
+                # Fail job with non-zero exit code
+                if return_code != 0:
+                    raise ReleaseException(
+                        message=fail_reason(robot_dir)
+                        or "".join([stderr.decode(), stdout.decode()]).strip(),
+                        code="",
+                        payload=payload,
+                    )
 
                 return payload
 
