@@ -233,7 +233,7 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                 for key in await s3_list_files(
                     s3_resource,
                     config.rcc_s3_bucket_data,
-                    f"{__process_instance_key}/",
+                    f"{config.business_key or __process_instance_key}/",
                 ):
                     file_path = Path(data_dir) / key.split(",", 1)[-1]
                     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,12 +304,12 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                             s3_client,
                             str(file_path),
                             config.rcc_s3_bucket_data,
-                            f"{__process_instance_key}/{key}",
+                            f"{config.business_key or __process_instance_key}/{key}",
                         )
                         payload[key] = await s3_generate_presigned_url(
                             s3_client,
                             config.rcc_s3_bucket_data,
-                            f"{__process_instance_key}/{key}",
+                            f"{config.business_key or __process_instance_key}/{key}",
                             config.rcc_s3_url_expires_in,
                         )
 
@@ -495,6 +495,12 @@ async def after_job(job: Job) -> Job:
 
 @click.command()
 @click.argument("robots", nargs=-1, envvar="RCC_ROBOTS")
+@click.option(
+    "--business-key",
+    default="businessKey",
+    envvar="BUSINESS_KEY",
+    help="Used instead of process id for work item files at S3 compatible storage",
+)
 @click.option("--rcc-executable", default="rcc", envvar="RCC_EXECUTABLE")
 @click.option("--rcc-controller", default="parrot-rcc", envvar="RCC_CONTROLLER")
 @click.option(
@@ -542,6 +548,7 @@ async def after_job(job: Job) -> Job:
 @click.option("--debug", is_flag=True, default=False, envvar="DEBUG")
 def main(
     robots,
+    business_key,
     rcc_executable,
     rcc_controller,
     rcc_fixed_spaces,
@@ -572,6 +579,7 @@ def main(
 
     """
     config = Options(
+        business_key=business_key,
         rcc_executable=rcc_executable,
         rcc_controller=rcc_controller,
         rcc_fixed_spaces=rcc_fixed_spaces,

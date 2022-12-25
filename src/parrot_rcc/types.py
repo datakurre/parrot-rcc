@@ -59,6 +59,7 @@ class ItemRelease:
 
 @dataclass
 class Options:
+    business_key: str = "businessKey"
     rcc_executable: str = "rcc"
     rcc_controller: str = "parrot-rcc"
     rcc_fixed_spaces: bool = False

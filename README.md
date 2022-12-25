@@ -12,6 +12,8 @@ Usage: parrot-rcc [OPTIONS] [ROBOTS]...
   space separated env RCC_ROBOTS
 
 Options:
+  --business-key TEXT             Used instead of process id for work item
+                                  files at S3 compatible storage
   --rcc-executable TEXT
   --rcc-controller TEXT
   --rcc-fixed-spaces              Allows RCC to execute multiple tasks
