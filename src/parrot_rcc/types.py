@@ -76,11 +76,17 @@ class Options:
     task_timeout_ms: int = 60 * 60 * 1000  # one hour
     task_max_jobs: int = (multiprocessing.cpu_count(),)
 
-    log_level: LogLevel = "info"
-    debug: bool = False
-
     zeebe_hostname: str = "localhost"
     zeebe_port: int = 26500
+
+    vault_addr: str = "http://127.0.0.1:8200"
+    vault_token: str = "secret"
+
+    healthz_hostname: str = ""
+    healthz_port: int = 8001
+
+    log_level: LogLevel = "info"
+    debug: bool = False
 
     camunda_client_id: str = ""
     camunda_client_secret: str = ""

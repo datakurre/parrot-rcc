@@ -5,12 +5,19 @@ from pyzeebe.grpc_internals.zeebe_adapter_base import ZeebeAdapterBase
 from typing import Dict
 from zeebe_grpc.gateway_pb2 import SetVariablesRequest
 from zeebe_grpc.gateway_pb2 import SetVariablesResponse
+from zeebe_grpc.gateway_pb2 import TopologyRequest
+from zeebe_grpc.gateway_pb2 import TopologyResponse
 import grpc
 import json
 import logging
 
 
 logger = logging.getLogger(__name__)
+
+
+class ZeebeTopologyAdapter(ZeebeAdapterBase):
+    async def topology(self) -> TopologyResponse:
+        return await self._gateway_stub.Topology(TopologyRequest)
 
 
 class ZeebeVariablesAdapter(ZeebeAdapterBase):

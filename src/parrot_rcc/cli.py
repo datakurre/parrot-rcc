@@ -3,6 +3,7 @@ from parrot_rcc.adapter import ZeebeVariablesAdapter
 from parrot_rcc.errors import ItemReleaseWithBusinessError
 from parrot_rcc.errors import ItemReleaseWithFailure
 from parrot_rcc.errors import ReleaseException
+from parrot_rcc.healthz import app as healthz_app
 from parrot_rcc.s3 import s3_generate_presigned_url
 from parrot_rcc.s3 import s3_list_files
 from parrot_rcc.s3 import s3_put_object
@@ -28,6 +29,7 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 from zipfile import ZipFile
+import aiohttp
 import asyncio
 import boto3
 import click
@@ -47,13 +49,14 @@ os.environ["GRPC_ENABLE_FORK_SUPPORT"] = "0"
 logger = logging.getLogger(__name__)
 
 WORK_ITEM_ADAPTER = """\
-from RPA.Robocorp.WorkItems import FileAdapter, RobocorpAdapter
+from RPA.Robocorp.WorkItems import FileAdapter
 from RPA.Robocorp.utils import Requests
 from urllib.parse import urlparse
 
-import os
 import json
 import logging
+import os
+
 
 class WorkItemAdapter(FileAdapter):
     def __init__(self, *args, **kwargs):
@@ -164,7 +167,13 @@ def fail_reason(robot_dir: str) -> str:
     return reason
 
 
-def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Options):
+def create_task(
+    task: str,
+    robot: str,
+    vault: Dict[str, str],
+    semaphore: asyncio.Semaphore,
+    config: Options,
+):
     task_config = TaskConfig(
         type=task,
         exception_handler=on_error,
@@ -203,6 +212,27 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                 region_name=config.rcc_s3_region,
                 verify=False,
             )
+
+            business_key = (
+                kwargs.get(config.business_key) if config.business_key else None
+            )
+            vault_json_data = {}
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=5),
+                headers={
+                    "Accept": "application/json",
+                    "X-Vault-Token": config.vault_token,
+                },
+            ) as session:
+                for secret_name, secret_path in vault.items():
+                    vault_url = (
+                        f"{config.vault_addr.strip('/')}/{secret_path.strip('/')}"
+                    )
+                    vault_resp = await session.get(vault_url)
+                    vault_json_data[secret_name] = (await vault_resp.json())["data"][
+                        "data"
+                    ]
+
             if config.rcc_fixed_spaces:
                 space = "parrot-" + (
                     "".join(re.findall(r"[\w-]", re.sub(r"\W+", "-", task.lower())))
@@ -228,12 +258,16 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                 output_json_path = Path(data_dir) / "items.output.json"
                 release_json_path = Path(data_dir) / "items.release.json"
                 with open(vault_json_path, "w", encoding="utf-8") as fp:
-                    fp.write(json.dumps({"env": dict(os.environ)}, indent=4))
+                    fp.write(
+                        json.dumps(
+                            vault_json_data | {"env": dict(os.environ)}, indent=4
+                        )
+                    )
                 items_files = {}
                 for key in await s3_list_files(
                     s3_resource,
                     config.rcc_s3_bucket_data,
-                    f"{config.business_key or __process_instance_key}/",
+                    f"{business_key or __process_instance_key}/",
                 ):
                     file_path = Path(data_dir) / key.split(",", 1)[-1]
                     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,12 +338,12 @@ def create_task(task: str, robot: str, semaphore: asyncio.Semaphore, config: Opt
                             s3_client,
                             str(file_path),
                             config.rcc_s3_bucket_data,
-                            f"{config.business_key or __process_instance_key}/{key}",
+                            f"{business_key or __process_instance_key}/{key}",
                         )
                         payload[key] = await s3_generate_presigned_url(
                             s3_client,
                             config.rcc_s3_bucket_data,
-                            f"{config.business_key or __process_instance_key}/{key}",
+                            f"{business_key or __process_instance_key}/{key}",
                             config.rcc_s3_url_expires_in,
                         )
 
@@ -538,12 +572,16 @@ async def after_job(job: Job) -> Job:
 @click.option(
     "--task-max-jobs", default=multiprocessing.cpu_count(), envvar="TASK_MAX_JOBS"
 )
+@click.option("--vault-addr", default="http://127.0.0.1:8200", envvar="VAULT_ADDR")
+@click.option("--vault-token", default="secret", envvar="VAULT_TOKEN")
 @click.option("--zeebe-hostname", default="localhost", envvar="ZEEBE_HOSTNAME")
 @click.option("--zeebe-port", default=26500, envvar="ZEEBE_PORT")
 @click.option("--camunda-client-id", default="", envvar="CAMUNDA_CLIENT_ID")
 @click.option("--camunda-client-secret", default="", envvar="CAMUNDA_CLIENT_SECRET")
 @click.option("--camunda-cluster-id", default="", envvar="CAMUNDA_CLIENT_SECRET")
 @click.option("--camunda-region", default="", envvar="CAMUNDA_CLIENT_SECRET")
+@click.option("--healthz-hostname", default="", envvar="HEALTHZ_HOSTNAME")
+@click.option("--healthz-port", default=8001, envvar="HEALTHZ_PORT")
 @click.option("--log-level", default="info", envvar="LOG_LEVEL")
 @click.option("--debug", is_flag=True, default=False, envvar="DEBUG")
 def main(
@@ -562,12 +600,16 @@ def main(
     rcc_telemetry,
     task_timeout_ms,
     task_max_jobs,
+    vault_addr,
+    vault_token,
     zeebe_hostname,
     zeebe_port,
     camunda_client_id,
     camunda_client_secret,
     camunda_cluster_id,
     camunda_region,
+    healthz_hostname,
+    healthz_port,
     log_level,
     debug,
 ):
@@ -593,8 +635,12 @@ def main(
         rcc_telemetry=rcc_telemetry,
         task_timeout_ms=task_timeout_ms,
         task_max_jobs=task_max_jobs,
+        vault_addr=vault_addr,
+        vault_token=vault_token,
         zeebe_hostname=zeebe_hostname,
         zeebe_port=zeebe_port,
+        healthz_hostname=healthz_hostname,
+        healthz_port=healthz_port,
         camunda_client_id=camunda_client_id,
         camunda_client_secret=camunda_client_secret,
         camunda_cluster_id=camunda_cluster_id,
@@ -607,6 +653,7 @@ def main(
     logger.info(
         dataclasses.replace(
             config,
+            vault_token="*" * 8,
             camunda_client_secret="*" * 8,
             rcc_s3_access_key_id="*" * 8,
             rcc_s3_secret_access_key="*" * 8,
@@ -624,7 +671,7 @@ def main(
         with ZipFile(robot, "r") as fp:
             robot_yaml = yaml.safe_load(fp.read("robot.yaml"))
             for task in robot_yaml.get("tasks") or {}:
-                tasks[task] = robot.resolve()
+                tasks[task] = robot.resolve(), robot_yaml.get("vault") or {}
 
     uvloop.install()
 
@@ -647,9 +694,11 @@ def main(
     )
     semaphore = asyncio.Semaphore(config.task_max_jobs)
 
-    for task, robot in tasks.items():
+    for task, (robot, vault) in tasks.items():
         worker._add_task(
-            task_builder.build_task(*create_task(task, str(robot), semaphore, config))
+            task_builder.build_task(
+                *create_task(task, str(robot), vault, semaphore, config)
+            )
         )
 
     loop = asyncio.get_event_loop()
@@ -664,7 +713,16 @@ def main(
             )
         )
         assert return_code == 0, lazydecode(stderr)
-        loop.run_until_complete(worker.work())
+        if config.healthz_hostname:
+            runner = aiohttp.web.AppRunner(healthz_app(config))
+            loop.run_until_complete(runner.setup())
+            site = aiohttp.web.TCPSite(
+                runner, host=config.healthz_hostname, port=config.healthz_port
+            )
+            loop.run_until_complete(site.start())
+            loop.run_until_complete(worker.work())
+        else:
+            loop.run_until_complete(worker.work())
     else:
         logger.error("No tasks: %s", lazypprint(tasks))
         loop.run_until_complete(sleep(3))
