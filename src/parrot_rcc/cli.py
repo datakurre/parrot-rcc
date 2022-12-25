@@ -228,10 +228,15 @@ def create_task(
                     vault_url = (
                         f"{config.vault_addr.strip('/')}/{secret_path.strip('/')}"
                     )
-                    vault_resp = await session.get(vault_url)
-                    vault_json_data[secret_name] = (await vault_resp.json())["data"][
-                        "data"
-                    ]
+                    try:
+                        vault_resp = await session.get(vault_url)
+                        vault_json_data[secret_name] = (await vault_resp.json())[
+                            "data"
+                        ]["data"]
+                    except Exception as e:
+                        raise Exception(
+                            f'Task secret "{secret_name}" at "{secret_path}" could not be loaded: {vault_resp}'
+                        ) from e
 
             if config.rcc_fixed_spaces:
                 space = "parrot-" + (
@@ -458,9 +463,9 @@ async def on_error(exception: Exception, job: Job):
     """
     on_error will be called when the task fails
     """
-    logger.error(str(exception))
     if isinstance(exception, ItemReleaseWithBusinessError):
         # RPA.Robocorp.WorkItems business error
+        logger.error(str(exception))
         job.variables = exception.payload
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
@@ -468,6 +473,7 @@ async def on_error(exception: Exception, job: Job):
         await job.set_error_status(str(exception), exception.code)
     elif isinstance(exception, ItemReleaseWithFailure):
         # RPA.Robocorp.WorkItems retryable application failure
+        logger.error(str(exception))
         job.variables = exception.payload
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
@@ -475,6 +481,7 @@ async def on_error(exception: Exception, job: Job):
         await job.set_failure_status(str(exception) or exception.code)
     elif isinstance(exception, ReleaseException):
         # Robot Framework test / task failure -> fail job without retries
+        logger.error(str(exception))
         job.variables = exception.payload
         await job.zeebe_adapter.set_variables(
             job.element_instance_key, job.variables, True
@@ -485,6 +492,7 @@ async def on_error(exception: Exception, job: Job):
         )
     else:
         # Unexpected exception -> fail job without retries
+        logger.exception(exception)
         message = f"Failed to handle job {job}. Error: {str(exception)}"
         job.status = JobStatus.Failed
         await job.zeebe_adapter.fail_job(job_key=job.key, retries=0, message=message)
