@@ -53,6 +53,7 @@ from RPA.Robocorp.WorkItems import FileAdapter
 from RPA.Robocorp.utils import Requests
 from urllib.parse import urlparse
 
+import inspect
 import json
 import logging
 import os
@@ -64,6 +65,15 @@ class WorkItemAdapter(FileAdapter):
         self._workitem_requests = Requests("", default_headers={})
 
     def release_input(self, item_id, state, exception=None):
+        # ignore library's internal release calls; no implicit retry
+        if state.value == "FAILED" and (exception or {}).get("type") == "APPLICATION":
+            try:
+                frame = inspect.currentframe()
+                if frame.f_back.f_locals.get("_auto_release"):
+                    return
+            except:
+                pass
+        #
         body = {"workItemId": item_id, "state": state.value}
         if exception:
             body["exception"] = {
