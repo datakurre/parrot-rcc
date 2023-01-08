@@ -69,7 +69,7 @@ class WorkItemAdapter(FileAdapter):
         if state.value == "FAILED" and (exception or {}).get("type") == "APPLICATION":
             try:
                 frame = inspect.currentframe()
-                if frame.f_back.f_locals.get("_auto_release"):
+                if frame.f_back.f_locals.get("_auto_release") is True:
                     return
             except:
                 pass
