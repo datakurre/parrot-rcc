@@ -2,10 +2,26 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from typing import List
 import asyncio
-import magic
+
+try:
+    import magic
+
+    HAS_MAGIC = True
+except ImportError:
+    import mimetypes
+
+    HAS_MAGIC = False
 
 
 default_executor = ThreadPoolExecutor()
+
+
+def mimetype_from_filename(local_path: str) -> str:
+    if HAS_MAGIC:
+        return magic.detect_from_filename(local_path).mime_type
+    else:
+        mime_type, _ = mimetypes.guess_type(local_path)
+        return mime_type or "text/plain"
 
 
 def s3_download_file_sync(
@@ -81,11 +97,7 @@ def s3_upload_file_sync(
         local_path,
         s3_bucket_name,
         s3_key,
-        ExtraArgs={
-            "ContentType": magic.detect_from_filename(
-                local_path,
-            ).mime_type
-        },
+        ExtraArgs={"ContentType": mimetype_from_filename(local_path)},
     )
 
 
