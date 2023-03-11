@@ -7,7 +7,7 @@ try:
     import magic
 
     HAS_MAGIC = True
-except ImportError:
+except (ImportError, TypeError):
     import mimetypes
 
     HAS_MAGIC = False
