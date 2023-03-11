@@ -40,6 +40,7 @@ import multiprocessing
 import os
 import pprint
 import re
+import shutil
 import yaml
 
 
@@ -552,7 +553,9 @@ async def after_job(job: Job) -> Job:
     envvar="BUSINESS_KEY",
     help="Used instead of process id for work item files at S3 compatible storage",
 )
-@click.option("--rcc-executable", default="rcc", envvar="RCC_EXECUTABLE")
+@click.option(
+    "--rcc-executable", default=shutil.which("rcc") or "rcc", envvar="RCC_EXECUTABLE"
+)
 @click.option("--rcc-controller", default="parrot-rcc", envvar="RCC_CONTROLLER")
 @click.option(
     "--rcc-fixed-spaces",
