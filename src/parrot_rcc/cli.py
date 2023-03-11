@@ -40,7 +40,6 @@ import multiprocessing
 import os
 import pprint
 import re
-import uvloop
 import yaml
 
 
@@ -690,8 +689,6 @@ def main(
             robot_yaml = yaml.safe_load(fp.read("robot.yaml"))
             for task in robot_yaml.get("tasks") or {}:
                 tasks[task] = robot.resolve(), robot_yaml.get("vault") or {}
-
-    uvloop.install()
 
     if config.insecure:
         channel = create_insecure_channel(
